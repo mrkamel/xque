@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     xque (0.1.0)
+      redis
 
 GEM
   remote: https://rubygems.org/
@@ -12,6 +13,7 @@ GEM
     parser (3.0.0.0)
       ast (~> 2.4.1)
     rainbow (3.0.0)
+    redis (4.2.5)
     regexp_parser (2.0.3)
     rexml (3.2.4)
     rspec (3.10.0)
