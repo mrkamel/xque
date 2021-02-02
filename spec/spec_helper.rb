@@ -1,5 +1,7 @@
 require "xque"
 
+ENV["REDIS_URL"] ||= "redis://localhost:6379/0"
+
 RedisClient = Redis.new(url: ENV.fetch("REDIS_URL"))
 
 RSpec.configure do |config|
