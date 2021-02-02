@@ -78,7 +78,7 @@ module XQue
         if not job_id then return nil end
 
         local job = redis.call('hget', 'xque:jobs', job_id)
-        
+
         if not job then return nil end
 
         local object = cjson.decode(job)

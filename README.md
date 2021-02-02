@@ -59,20 +59,16 @@ BackgroundQueue.enqueue EmailVerificationWorker.new(user_id: user.id)
 Finally, we need to start consuming jobs from the queue:
 
 ```ruby
-consumers = XQue::Consumers.new(redis_url: "redis://localhost:6379/0", threads: 5)
-consumers.run
+XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5).run
 ```
 
 This will start processing jobs and block forever, such that you want to start
-this within a thread and call `consumers.stop` to gracefully stop it from
-blocking. However, usually you just want to call `setup_traps` before calling
-`run`, such that graceful termination is automatically triggered, when the
-process receives a `QUIT`, `TERM` or `INT` signal:
+this within a thread and call `consumers.stop` when you want it to gracefully
+stop. If you want the process to listen to `QUIT`, `TERM` and `INT` to trigger
+graceful termination, simply use:
 
 ```ruby
-consumers = XQue::Consumers.new(redis_url: "redis://localhost:6379/0", threads: 5)
-consumers.setup_traps
-consumers.run
+XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5).run(traps: true)
 ```
 
 ## Retries, Expiry and Backoff
@@ -96,12 +92,32 @@ class EmailVerificationWorker
 
 ## Logging
 
-You can pass a logger instance to `XQue::Consumers`, such that exceptions are
+You can pass a logger instance to `XQue::ConsumerPool`, such that exceptions are
 logged:
 
 ```ruby
-XQue::Consumers.new(redis_url: "redis://localhost:6379/0", threads: 5, logger: Logger.new(STDOUT)).run
+XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5, logger: Logger.new(STDOUT)).run
 ```
+
+## Internals
+
+When you enqueue a job, it is added to a redis list. Consumers pop jobs from
+the list and add them to a redis sorted set of pending jobs. This happens
+atomically, such that no jobs get lost in between. A sorted set is used,
+because we can sort the items in the sorted set by `expiry`, such that
+consumers can just read the first item from the sorted set and know if it is
+expired or not. If it is not expired, there can be no other expired jobs, such
+that this check is quite efficient. Actually, before consumers try to pop items
+from the redis list, they first always try to read the first item from the
+sorted set to check if it is expired. When the job in the sorted set is
+expired, it's `expiry` value gets updated and the job gets processed again.
+This read-and-update operation happens atomically as well, such there won't be
+two consumers which update and re-process the same job. If no items from the
+sorted set are expired, the consumer tries to pop a job from the redis list
+and, as already stated, atomically adds it to the sorted set of pending jobs.
+Similarly, when a job fails, the `backoff` values are used to update the job's
+expiry value, up until the maximum number of retries is reached or the job
+succeeds. When a job succeeds it is simply removed from the pending jobs.
 
 ## Development
 

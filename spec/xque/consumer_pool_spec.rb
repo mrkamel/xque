@@ -1,4 +1,4 @@
-RSpec.describe XQue::Consumers do
+RSpec.describe XQue::ConsumerPool do
   let(:redis_url) { ENV.fetch("REDIS_URL") }
   let(:logger) { Logger.new("/dev/null") }
 
@@ -8,8 +8,7 @@ RSpec.describe XQue::Consumers do
 
       allow_any_instance_of(XQue::Consumer).to receive(:run)
 
-      consumers = described_class.new(redis_url: redis_url, threads: 5, queue_name: "items", logger: logger)
-      consumers.run
+      described_class.new(redis_url: redis_url, threads: 5, queue_name: "items", logger: logger).run
 
       expect(Thread).to have_received(:new).exactly(5).times
     end
@@ -20,24 +19,23 @@ RSpec.describe XQue::Consumers do
 
       allow(XQue::Consumer).to receive(:new).and_return(consumer)
 
-      consumers = described_class.new(redis_url: redis_url, threads: 5, queue_name: "items", logger: logger)
-      consumers.run
+      described_class.new(redis_url: redis_url, threads: 5, queue_name: "items", logger: logger).run
 
       expect(XQue::Consumer).to have_received(:new).with(redis_url: redis_url, queue_name: "items", logger: logger).exactly(5).times
     end
-  end
 
-  describe "#setup_traps" do
-    it "installs traps" do
-      consumers = described_class.new(redis_url: redis_url, threads: 5, queue_name: "items", logger: logger)
+    it "installs traps if traps is true" do
+      allow_any_instance_of(XQue::Consumer).to receive(:run)
 
-      allow(consumers).to receive(:trap)
+      consumer_pool = described_class.new(redis_url: redis_url, threads: 5, queue_name: "items", logger: logger)
 
-      consumers.setup_traps
+      allow(consumer_pool).to receive(:trap)
 
-      expect(consumers).to have_received(:trap).with("QUIT")
-      expect(consumers).to have_received(:trap).with("TERM")
-      expect(consumers).to have_received(:trap).with("INT")
+      consumer_pool.run(traps: true)
+
+      expect(consumer_pool).to have_received(:trap).with("QUIT")
+      expect(consumer_pool).to have_received(:trap).with("TERM")
+      expect(consumer_pool).to have_received(:trap).with("INT")
     end
   end
 
@@ -49,9 +47,9 @@ RSpec.describe XQue::Consumers do
 
       allow(XQue::Consumer).to receive(:new).and_return(consumer)
 
-      consumers = described_class.new(redis_url: redis_url, threads: 5, queue_name: "items")
-      consumers.run
-      consumers.stop
+      consumer_pool = described_class.new(redis_url: redis_url, threads: 5, queue_name: "items")
+      consumer_pool.run
+      consumer_pool.stop
 
       expect(consumer).to have_received(:stop).exactly(5).times
     end
