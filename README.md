@@ -62,10 +62,10 @@ Finally, we need to start consuming jobs from the queue:
 XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5).run
 ```
 
-This will start processing jobs and block forever, such that you want to start
-this within a thread and call `consumers.stop` when you want it to gracefully
-stop. If you want the process to listen to `QUIT`, `TERM` and `INT` to trigger
-graceful termination, simply use:
+This will start processing jobs using 5 threads and block forever, such that
+you want to start this within a thread and call `consumers.stop` when you want
+it to gracefully stop. If you want the process to listen to `QUIT`, `TERM` and
+`INT` to trigger graceful termination, simply use:
 
 ```ruby
 XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5).run(traps: true)

@@ -51,7 +51,7 @@ module XQue
 
     def perform(job)
       object = JSON.parse(job)
-      worker = Object.const_get(object["class"]).new(object["attributes"])
+      worker = Object.const_get(object["class"]).new(object["args"])
 
       begin
         worker.perform
@@ -117,7 +117,7 @@ module XQue
         redis.call('zadd', 'xque:pending:' .. queue_name, tonumber(redis.call('time')[1]) + backoff, job_id)
       SCRIPT
 
-      @redis.eval(@backoff_script, argv: [@queue_name, object["id"], updated_job, backoff])
+      @redis.eval(@backoff_script, argv: [@queue_name, object["jid"], updated_job, backoff])
     end
 
     def delete(job)
@@ -130,7 +130,7 @@ module XQue
         redis.call('zrem', 'xque:pending:' .. queue_name, job_id)
       SCRIPT
 
-      @redis.eval(@delete_script, argv: [@queue_name, object["id"]])
+      @redis.eval(@delete_script, argv: [@queue_name, object["jid"]])
     end
   end
 end
