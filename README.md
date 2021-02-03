@@ -71,6 +71,45 @@ it to gracefully stop. If you want the process to listen to `QUIT`, `TERM` and
 XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5).run(traps: true)
 ```
 
+## Job and Queue Info
+
+`XQue::Producer` provides methods which let you inspect a queue and its jobs.
+When you want to know how many jobs are in a queue currently, you can do:
+
+```ruby
+BackgroundQueue = XQue::Producer.new(redis_url: "redis://localhost:6379/0")
+BackgroundQueue.queue_size
+```
+
+or to get the number of pending jobs:
+
+```ruby
+BackgroundQueue.pending_size
+```
+
+Additionally, `XQue::Producer#enqueue` returns the a job id, i.e. a `jid`. You
+can use the `jid` to receive information about the job:
+
+```ruby
+jid = BackgroundQueue.enqueue(SomeWorker.new(key: "value"))
+
+BackgroundQueue.find(jid)
+# => { "jid" => jid, "class" => "SomeWorker", "args" => { "key" => "value" }, "expiry" => 3600, "created_at" => "2021-01-01T12:00:00Z" }
+```
+
+Finally, to get the pending time, i.e. the time up until a job will be
+scheduled again in case it doesn't succeed:
+
+```ruby
+BackgroundQueue.pending_time(jid)
+# => e.g. 3600 when it starts being processed or 30, 90, 270 in case it failed and is backed off
+```
+
+The pending time is only available for jobs which have been popped for
+processing by a consumer at least once. It decreases every second and can even
+become negative when no consumer is available to process the expired pending
+job.
+
 ## Retries, Expiry and Backoff
 
 The default values used by XQue are:

@@ -32,6 +32,14 @@ module XQue
       job_id
     end
 
+    def queue_size
+      @redis.llen("xque:queue:#{@queue_name}")
+    end
+
+    def pending_size
+      @redis.zcard("xque:pending:#{@queue_name}")
+    end
+
     def find(job_id)
       job = @redis.hget("xque:jobs", job_id)
 

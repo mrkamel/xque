@@ -57,6 +57,40 @@ RSpec.describe XQue::Producer do
     end
   end
 
+  describe "#queue_size" do
+    it "returns 0 when there no queued jobs" do
+      expect(producer.queue_size).to eq(0)
+    end
+
+    it "returns the number of jobs in the queue" do
+      producer.enqueue(ProducerTestWorker.new(key: "value"))
+      producer.enqueue(ProducerTestWorker.new(key: "value"))
+      producer.enqueue(ProducerTestWorker.new(key: "value"))
+
+      expect(producer.queue_size).to eq(3)
+    end
+  end
+
+  describe "#pending_size" do
+    it "returns 0 when there are no pending jobs" do
+      expect(producer.pending_size).to eq(0)
+    end
+
+    it "returns the number of pending jobs" do
+      jid1 = producer.enqueue(ProducerTestWorker.new(key: "value"))
+      jid2 = producer.enqueue(ProducerTestWorker.new(key: "value"))
+      jid3 = producer.enqueue(ProducerTestWorker.new(key: "value"))
+
+      RedisClient.del("xque:queue:items")
+
+      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid1)
+      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid2)
+      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid3)
+
+      expect(producer.pending_size).to eq(3)
+    end
+  end
+
   describe "#find" do
     it "returns nil when the job can not be found" do
       expect(producer.find("unknown")).to be_nil
