@@ -1,6 +1,7 @@
 require "json"
 require "logger"
 require "redis"
+require "time"
 require "securerandom"
 require "xque/version"
 require "xque/producer"
