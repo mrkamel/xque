@@ -1,7 +1,22 @@
 module XQue
+  # The XQue::Consumer consumes and performs jobs from a specified queue.
+  #
+  # @example
+  #   consumer = XQue::Consumer.new(redis_url: "redis://localhost:6379/0", queue_name: "default")
+  #   consumer.run
+
   class Consumer
     DEFAULT_BACKOFF = 60
     SLEEP_INTERVAL = 5
+
+    # Initializes a new consumer.
+    #
+    # @param redis_url [String] The redis url to connect to.
+    # @param queue_name [String] The name to consume jobs from.
+    # @param logger [Logger] A logger instance to log e.g. errors to.
+    #
+    # @example
+    #   XQue::Consumer.new(redis_url: "...", queue_name: "default")
 
     def initialize(redis_url:, queue_name:, logger: Logger.new("/dev/null"))
       @redis = Redis.new(url: redis_url)
@@ -12,14 +27,30 @@ module XQue
       @stopped = false
     end
 
+    # Starts to consume and perform jobs from the queue. Blocks until
+    # gracefully stopped.
+    #
+    # @example
+    #   consumer = XQue::Consumer.new(redis_url: "...", queue_name: "default")
+    #   consumer.run
+
     def run
       run_once until @stopped
     end
+
+    # Gracefully stops the consumer.
+    #
+    # @example
+    #   consumer = XQue::Consumer.new(redis_url: "...", queue_name: "default")
+    #   # ...
+    #   consumer.stop
 
     def stop
       @stopped = true
       @wakeup_queue.enq(1)
     end
+
+    # @api private
 
     def run_once
       job = dequeue

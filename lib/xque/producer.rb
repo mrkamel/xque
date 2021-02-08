@@ -1,19 +1,43 @@
 module XQue
+  # The XQue::Producer class allows to enqueue jobs to the specified queue
+  # and to get other useful information about the state of the queue.
+  #
+  # @example
+  #   MyQueue = XQue::Producer.new(redis_url: "redis://localhost:6379/0", queue_name: "default")
+  #   MyQueue.enqueue MyWorker.new(param: "value")
+
   class Producer
+    # Initializes a new producer instance.
+    #
+    # @param redis_url [String] The redis url to connect to.
+    # @param queue_name [String] The queue name to be used.
+    #
+    # @example
+    #   XQue::Producer.new(redis_url: "...", queue_name: "default")
+
     def initialize(redis_url:, queue_name: XQue::DEFAULT_QUEUE_NAME)
       @redis = Redis.new(url: redis_url)
       @queue_name = queue_name
     end
 
+    # Enqueues the specified worker instance to the specified queue.
+    #
+    # @param worker The job that should be enqueued.
+    # @returns [String] The jid of the enqueued job.
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.enqueue MyWorker.new(param: "value")
+
     def enqueue(worker)
-      job_id = SecureRandom.hex(16)
+      jid = SecureRandom.hex(16)
 
       args = worker.class.xque_attributes.each_with_object({}) do |name, hash|
         hash[name] = worker.send(:"#{name}")
       end
 
       job = JSON.generate(
-        jid: job_id,
+        jid: jid,
         class: worker.class.name,
         args: args,
         expiry: Integer(worker.class.xque_options[:expiry]),
@@ -21,41 +45,76 @@ module XQue
       )
 
       @enqueue_script ||= <<~SCRIPT
-        local queue_name, job_id, job = ARGV[1], ARGV[2], ARGV[3]
+        local queue_name, jid, job = ARGV[1], ARGV[2], ARGV[3]
 
-        redis.call('hset', 'xque:jobs', job_id, job)
-        redis.call('lpush', 'xque:queue:' .. queue_name, job_id)
+        redis.call('hset', 'xque:jobs', jid, job)
+        redis.call('lpush', 'xque:queue:' .. queue_name, jid)
       SCRIPT
 
-      @redis.eval(@enqueue_script, argv: [@queue_name, job_id, job])
+      @redis.eval(@enqueue_script, argv: [@queue_name, jid, job])
 
-      job_id
+      jid
     end
+
+    # Returns the number of queued jobs for the queue.
+    #
+    # @returns [Integer] The number of queued jobs.
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.queue_size # => e.g. 13
 
     def queue_size
       @redis.llen("xque:queue:#{@queue_name}")
     end
 
+    # Returns the number of pending jobs for the queue.
+    #
+    # @returns [Integer] The number of pending jobs.
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.pending_size # => e.g. 13
+
     def pending_size
       @redis.zcard("xque:pending:#{@queue_name}")
     end
 
-    def find(job_id)
-      job = @redis.hget("xque:jobs", job_id)
+    # Returns the job having the specified jid, if present in the queue.
+    #
+    # @param jid [String] The job id of the job to be fetched.
+    # @returns [Hash] The job if present in the queue or nil.
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.find("3a72f5...") # => { "jid" => "...", "class" => "MyWorker", ... }
+
+    def find(jid)
+      job = @redis.hget("xque:jobs", jid)
 
       return unless job
 
       JSON.parse(job)
     end
 
-    def pending_time(job_id)
-      @pending_time_script ||= <<~SCRIPT
-        local queue_name, job_id = ARGV[1], ARGV[2]
+    # Returns the pending time, i.e. the time up until the job will be
+    # reconsidered for processing (failed jobs, expired jobs, etc).
+    #
+    # @param jid [String] The job id to fetch the pending time for.
+    # @returns [Integer] The pending time in seconds.
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.pending_time("3a72f5...") # => e.g. 180
 
-        return { redis.call('time')[1], redis.call('zscore', 'xque:pending:' .. queue_name, job_id) }
+    def pending_time(jid)
+      @pending_time_script ||= <<~SCRIPT
+        local queue_name, jid = ARGV[1], ARGV[2]
+
+        return { redis.call('time')[1], redis.call('zscore', 'xque:pending:' .. queue_name, jid) }
       SCRIPT
 
-      time, score = @redis.eval(@pending_time_script, argv: [@queue_name, job_id])
+      time, score = @redis.eval(@pending_time_script, argv: [@queue_name, jid])
 
       return if time.nil? || score.nil?
 
