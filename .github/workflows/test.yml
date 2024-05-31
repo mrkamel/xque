@@ -23,7 +23,8 @@ jobs:
       with:
         path: vendor/bundler
         key: ${{ hashFiles('Gemfile.lock') }}-${{ matrix.ruby }}
-    - run: |
+    - name: test
+      run: |
         gem install bundler
         bundle install --path=vendor/bundler
         bundle exec rspec
