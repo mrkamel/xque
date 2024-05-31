@@ -23,13 +23,14 @@ module XQue
     # Enqueues the specified worker instance to the specified queue.
     #
     # @param worker The job that should be enqueued.
+    # @param priority [Integer] The job priority (-4..+4), default: 0
     # @returns [String] The jid of the enqueued job.
     #
     # @example
     #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
     #   MyQueue.enqueue MyWorker.new(param: "value")
 
-    def enqueue(worker)
+    def enqueue(worker, priority: 0)
       jid = SecureRandom.hex(16)
 
       args = worker.class.xque_attributes.each_with_object({}) do |name, hash|
@@ -45,15 +46,31 @@ module XQue
       )
 
       @enqueue_script ||= <<~SCRIPT
-        local queue_name, jid, job = ARGV[1], ARGV[2], ARGV[3]
+        local queue_name, jid, job, priority = ARGV[1], ARGV[2], ARGV[3], tonumber(ARGV[4])
 
         redis.call('hset', 'xque:jobs', jid, job)
-        redis.call('lpush', 'xque:queue:' .. queue_name, jid)
+
+        local sequence_number = redis.call('incr', 'xque:seq:' .. queue_name)
+        local score = -priority * (2^50) + sequence_number
+
+        redis.call('zadd', 'xque:queue:' .. queue_name, score, jid)
       SCRIPT
 
-      @redis.eval(@enqueue_script, argv: [@queue_name, jid, job])
+      @redis.eval(@enqueue_script, argv: [@queue_name, jid, job, priority])
 
       jid
+    end
+
+    # Returns the number of queued and pending jobs
+    #
+    # @returns [Integer] The number of jobs
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.size #=> e.g. 15
+
+    def size
+      queue_size + pending_size
     end
 
     # Returns the number of queued jobs for the queue.
@@ -65,7 +82,7 @@ module XQue
     #   MyQueue.queue_size # => e.g. 13
 
     def queue_size
-      @redis.llen("xque:queue:#{@queue_name}")
+      @redis.zcard("xque:queue:#{@queue_name}")
     end
 
     # Returns the number of pending jobs for the queue.
@@ -95,6 +112,34 @@ module XQue
       return unless job
 
       JSON.parse(job)
+    end
+
+    # Iterates all jobs of the queue.
+    #
+    # @returns [Enum] An enum
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #
+    #   MyQueue.scan_each do |job|
+    #     job # => { "jid" => "...", "class" => "MyWorker", ... }
+    #   end
+
+    def scan_each
+      return enum_for(__method__) unless block_given?
+
+      ["xque:pending:#{@queue_name}", "xque:queue:#{@queue_name}"].each do |key|
+        @redis.zscan_each(key).each_slice(100) do |slice|
+          jobs = @redis.hmget("xque:jobs", slice.map(&:first))
+
+          slice.each_with_index do |_, index|
+            job = jobs[index]
+            next unless job
+
+            yield JSON.parse(job)
+          end
+        end
+      end
     end
 
     # Returns the pending time, i.e. the time up until the job will be
