@@ -38,6 +38,19 @@ RSpec.describe XQue::Consumer do
       expect(RedisConnection.hlen("xque:jobs")).to eq(1)
     end
 
+    it "pops jobs in the correct order" do
+      jid1 = producer.enqueue(ProducerTestWorker.new, priority: 0)
+      jid2 = producer.enqueue(ProducerTestWorker.new, priority: 2)
+      jid3 = producer.enqueue(ProducerTestWorker.new, priority: 4)
+      jid4 = producer.enqueue(ProducerTestWorker.new, priority: -2)
+      jid5 = producer.enqueue(ProducerTestWorker.new, priority: 4)
+      jid6 = producer.enqueue(ProducerTestWorker.new, priority: 0)
+
+      jids = 6.times.map { JSON.parse(consumer.send(:dequeue))["jid"] }
+
+      expect(jids).to eq([jid3, jid5, jid2, jid1, jid6, jid4])
+    end
+
     it "adds popped jobs to the pending list with correct expiry" do
       pending = nil
 
