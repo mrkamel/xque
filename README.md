@@ -85,6 +85,13 @@ When you want to know how many jobs are in a queue currently, you can do:
 
 ```ruby
 BackgroundQueue = XQue::Producer.new(redis_url: "redis://localhost:6379/0")
+BackgroundQueue.size
+```
+
+or to only get the number of queued jobs without the number of pending jobs:
+
+```ruby
+BackgroundQueue = XQue::Producer.new(redis_url: "redis://localhost:6379/0")
 BackgroundQueue.queue_size
 ```
 
