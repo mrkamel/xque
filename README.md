@@ -2,8 +2,8 @@
 
 **A reliable, redis-based job queue**
 
-XQue is a reliable, redis-based job queue with automatic retries, backoff and
-job ttl's.
+XQue is a reliable, redis-based job queue with automatic retries, job
+priorities, backoff and job ttl's.
 
 ## Installation
 
@@ -54,6 +54,13 @@ Now we can enqueue jobs using the producer:
 
 ```ruby
 BackgroundQueue.enqueue EmailVerificationWorker.new(user_id: user.id)
+```
+
+You can also set a priority from -4 to +4 (default: 0). Jobs having a higher
+priority will be processed before jobs having a lower priority:
+
+```ruby
+BackgroundQueue.enqueue EmailVerificationWorker.new(user_id: user.id), priority: 3
 ```
 
 Finally, we need to start consuming jobs from the queue:
@@ -140,23 +147,24 @@ XQue::ConsumerPool.new(redis_url: "redis://localhost:6379/0", threads: 5, logger
 
 ## Internals
 
-When you enqueue a job, it is added to a redis list. Consumers pop jobs from
-the list and add them to a redis sorted set of pending jobs. This happens
-atomically, such that no jobs get lost in between. A sorted set is used,
-because we can sort the items in the sorted set by `expiry`, such that
-consumers can just read the first item from the sorted set and know if it is
-expired or not. If it is not expired, there can be no other expired jobs, such
-that this check is quite efficient. Actually, before consumers try to pop items
-from the redis list, they first always try to read the first item from the
-sorted set to check if it is expired. When the job in the sorted set is
-expired, it's `expiry` value gets updated and the job gets processed again.
-This read-and-update operation happens atomically as well, such there won't be
-two consumers which update and re-process the same job. If no items from the
-sorted set are expired, the consumer tries to pop a job from the redis list
-and, as already stated, atomically adds it to the sorted set of pending jobs.
-Similarly, when a job fails, the `backoff` values are used to update the job's
-expiry value, up until the maximum number of retries is reached or the job
-succeeds. When a job succeeds it is simply removed from the pending jobs.
+When you enqueue a job, it is added to a redis sorted set. A sorted set is used
+to support job priorities. Consumers pop jobs from it and add them to another
+redis sorted set of pending jobs. This happens atomically, such that no jobs
+get lost in between. A sorted set is used, because we can sort the items in the
+sorted set by `expiry`, such that consumers can just read the first item from
+the sorted set and know if it is expired or not. If it is not expired, there
+can be no other expired jobs, such that this check is quite efficient.
+Actually, before consumers try to pop items from the redis list, they first
+always try to read the first item from the sorted set to check if it is
+expired. When the job in the sorted set is expired, it's `expiry` value gets
+updated and the job gets processed again.  This read-and-update operation
+happens atomically as well, such there won't be two consumers which update and
+re-process the same job. If no items from the sorted set are expired, the
+consumer tries to pop a job from the redis list and, as already stated,
+atomically adds it to the sorted set of pending jobs.  Similarly, when a job
+fails, the `backoff` values are used to update the job's expiry value, up until
+the maximum number of retries is reached or the job succeeds. When a job
+succeeds it is simply removed from the pending jobs.
 
 ## Development
 

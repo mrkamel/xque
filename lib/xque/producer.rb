@@ -23,13 +23,14 @@ module XQue
     # Enqueues the specified worker instance to the specified queue.
     #
     # @param worker The job that should be enqueued.
+    # @param priority [Integer] The job priority (-4..+4), default: 0
     # @returns [String] The jid of the enqueued job.
     #
     # @example
     #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
     #   MyQueue.enqueue MyWorker.new(param: "value")
 
-    def enqueue(worker)
+    def enqueue(worker, priority: 0)
       jid = SecureRandom.hex(16)
 
       args = worker.class.xque_attributes.each_with_object({}) do |name, hash|
@@ -45,13 +46,17 @@ module XQue
       )
 
       @enqueue_script ||= <<~SCRIPT
-        local queue_name, jid, job = ARGV[1], ARGV[2], ARGV[3]
+        local queue_name, jid, job, priority = ARGV[1], ARGV[2], ARGV[3], tonumber(ARGV[4])
 
         redis.call('hset', 'xque:jobs', jid, job)
-        redis.call('lpush', 'xque:queue:' .. queue_name, jid)
+
+        local sequence_number = redis.call('incr', 'xque:seq:' .. queue_name)
+        local score = -priority * (2^50) + sequence_number
+
+        redis.call('zadd', 'xque:queue:' .. queue_name, score, jid)
       SCRIPT
 
-      @redis.eval(@enqueue_script, argv: [@queue_name, jid, job])
+      @redis.eval(@enqueue_script, argv: [@queue_name, jid, job, priority])
 
       jid
     end
@@ -65,7 +70,7 @@ module XQue
     #   MyQueue.queue_size # => e.g. 13
 
     def queue_size
-      @redis.llen("xque:queue:#{@queue_name}")
+      @redis.zcard("xque:queue:#{@queue_name}")
     end
 
     # Returns the number of pending jobs for the queue.

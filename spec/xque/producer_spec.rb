@@ -13,7 +13,7 @@ RSpec.describe XQue::Producer do
         Timecop.freeze Time.parse("2021-01-01 12:00:00 UTC") do
           jid = producer.enqueue(ProducerTestWorker.new(key: "value"))
 
-          jobs = RedisClient.hgetall("xque:jobs").transform_values { |value| JSON.parse(value) }
+          jobs = RedisConnection.hgetall("xque:jobs").transform_values { |value| JSON.parse(value) }
 
           expect(jobs).to match(
             jid => {
@@ -27,16 +27,34 @@ RSpec.describe XQue::Producer do
         end
       end
 
-      it "adds the job id to xque:queue:default" do
+      it "adds the job id to the queue" do
         jid = producer.enqueue(ProducerTestWorker.new)
 
-        expect(RedisClient.lrange("xque:queue:items", 0, 10)).to eq([jid])
+        expect(RedisConnection.zrange("xque:queue:items", 0, 10)).to eq([jid])
       end
 
       it "returns the job id" do
         allow(SecureRandom).to receive(:hex).with(16).and_return("jid")
 
         expect(producer.enqueue(ProducerTestWorker.new)).to eq("jid")
+      end
+
+      it "encodes the score correctly" do
+        jid1 = producer.enqueue(ProducerTestWorker.new, priority: 0)
+        jid2 = producer.enqueue(ProducerTestWorker.new, priority: 2)
+        jid3 = producer.enqueue(ProducerTestWorker.new, priority: -2)
+        jid4 = producer.enqueue(ProducerTestWorker.new, priority: 4)
+        jid5 = producer.enqueue(ProducerTestWorker.new, priority: -4)
+
+        expect(RedisConnection.zrange("xque:queue:items", 0, 10, with_scores: true)).to eq(
+          [
+            [jid4, (-4 << 50) | 4],
+            [jid2, (-2 << 50) | 2],
+            [jid1, (0 << 50) | 1],
+            [jid3, (2 << 50) | 3],
+            [jid5, (4 << 50) | 5],
+          ]
+        )
       end
     end
 
@@ -46,7 +64,7 @@ RSpec.describe XQue::Producer do
       it "adds the job id to xque:queue:custom" do
         jid = producer.enqueue(ProducerTestWorker.new)
 
-        expect(RedisClient.lrange("xque:queue:custom", 0, 10)).to eq([jid])
+        expect(RedisConnection.zrange("xque:queue:custom", 0, 10)).to eq([jid])
       end
 
       it "returns the job id" do
@@ -81,11 +99,11 @@ RSpec.describe XQue::Producer do
       jid2 = producer.enqueue(ProducerTestWorker.new(key: "value"))
       jid3 = producer.enqueue(ProducerTestWorker.new(key: "value"))
 
-      RedisClient.del("xque:queue:items")
+      RedisConnection.del("xque:queue:items")
 
-      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid1)
-      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid2)
-      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid3)
+      RedisConnection.zadd("xque:pending:items", RedisConnection.time[0] + 100, jid1)
+      RedisConnection.zadd("xque:pending:items", RedisConnection.time[0] + 100, jid2)
+      RedisConnection.zadd("xque:pending:items", RedisConnection.time[0] + 100, jid3)
 
       expect(producer.pending_size).to eq(3)
     end
@@ -125,8 +143,8 @@ RSpec.describe XQue::Producer do
     it "returns the pending time" do
       jid = producer.enqueue(ProducerTestWorker.new(key: "value"))
 
-      RedisClient.del("xque:queue:items")
-      RedisClient.zadd("xque:pending:items", RedisClient.time[0] + 100, jid)
+      RedisConnection.del("xque:queue:items")
+      RedisConnection.zadd("xque:pending:items", RedisConnection.time[0] + 100, jid)
 
       expect(producer.pending_time(jid)).to be_between(95, 105)
     end

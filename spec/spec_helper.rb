@@ -3,7 +3,7 @@ require "timecop"
 
 ENV["REDIS_URL"] ||= "redis://localhost:6379/0"
 
-RedisClient = Redis.new(url: ENV.fetch("REDIS_URL"))
+RedisConnection = Redis.new(url: ENV.fetch("REDIS_URL"))
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
@@ -17,6 +17,6 @@ RSpec.configure do |config|
   end
 
   config.before do
-    RedisClient.flushdb
+    RedisConnection.flushdb
   end
 end

@@ -103,7 +103,7 @@ module XQue
         local job_id = zitem[1]
 
         if not zitem[2] or tonumber(zitem[2]) > tonumber(redis.call('time')[1]) then
-          job_id = redis.call('rpop', 'xque:queue:' .. queue_name)
+          job_id = redis.call('zpopmin', 'xque:queue:' .. queue_name)[1]
         end
 
         if not job_id then return nil end
