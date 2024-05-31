@@ -101,7 +101,7 @@ or to get the number of pending jobs:
 BackgroundQueue.pending_size
 ```
 
-Additionally, `XQue::Producer#enqueue` returns the a job id, i.e. a `jid`. You
+Additionally, `XQue::Producer#enqueue` returns the job id, i.e. a `jid`. You
 can use the `jid` to receive information about the job:
 
 ```ruby
@@ -169,17 +169,17 @@ get lost in between. A sorted set is used, because we can sort the items in the
 sorted set by `expiry`, such that consumers can just read the first item from
 the sorted set and know if it is expired or not. If it is not expired, there
 can be no other expired jobs, such that this check is quite efficient.
-Actually, before consumers try to pop items from the redis list, they first
-always try to read the first item from the sorted set to check if it is
-expired. When the job in the sorted set is expired, it's `expiry` value gets
-updated and the job gets processed again.  This read-and-update operation
-happens atomically as well, such there won't be two consumers which update and
-re-process the same job. If no items from the sorted set are expired, the
-consumer tries to pop a job from the redis list and, as already stated,
-atomically adds it to the sorted set of pending jobs.  Similarly, when a job
-fails, the `backoff` values are used to update the job's expiry value, up until
-the maximum number of retries is reached or the job succeeds. When a job
-succeeds it is simply removed from the pending jobs.
+Actually, before consumers try to pop items from the queue, they first always
+try to read the first item from the pending set to check if it is expired. When
+the job in the sorted set is expired, it's `expiry` value gets updated and the
+job gets processed again. This read-and-update operation happens atomically as
+well, such there won't be two consumers which update and re-process the same
+job. If no items from the sorted set are expired, the consumer tries to pop a
+job from the main set and, as already stated, atomically adds it to the set of
+pending jobs. Similarly, when a job fails, the `backoff` values are used to
+update the job's expiry value, up until the maximum number of retries is
+reached or the job succeeds. When a job succeeds it is simply removed from the
+pending jobs.
 
 ## Development
 
