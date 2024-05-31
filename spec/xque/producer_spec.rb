@@ -52,7 +52,7 @@ RSpec.describe XQue::Producer do
             [jid2, (-2 << 50) | 2],
             [jid1, (0 << 50) | 1],
             [jid3, (2 << 50) | 3],
-            [jid5, (4 << 50) | 5],
+            [jid5, (4 << 50) | 5]
           ]
         )
       end
