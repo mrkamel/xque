@@ -104,8 +104,8 @@ BackgroundQueue.find(jid)
 # => { "jid" => jid, "class" => "SomeWorker", "args" => { "key" => "value" }, "expiry" => 3600, "created_at" => "2021-01-01T12:00:00Z" }
 ```
 
-Finally, to get the pending time, i.e. the time up until a job will be
-scheduled again in case it doesn't succeed:
+To get the pending time, i.e. the time up until a job will be scheduled again
+in case it doesn't succeed:
 
 ```ruby
 BackgroundQueue.pending_time(jid)
@@ -116,6 +116,14 @@ The pending time is only available for jobs which have been popped for
 processing by a consumer at least once. It decreases every second and can even
 become negative when no consumer is available to process the expired pending
 job.
+
+It is also possible to iterate all jobs of a queue:
+
+```ruby
+BackgroundQueue.scan_each do |job|
+  job # => { "jid" => jid, "class" => "SomeWorker", "args" => { "key" => "value" }, "expiry" => 3600, "created_at" => "2021-01-01T12:00:00Z" }
+end
+```
 
 ## Retries, Expiry and Backoff
 

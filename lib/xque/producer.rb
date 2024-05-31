@@ -122,7 +122,7 @@ module XQue
     #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
     #
     #   MyQueue.scan_each do |job|
-    #     # => { "jid" => "...", "class" => "MyWorker", ... }
+    #     job # => { "jid" => "...", "class" => "MyWorker", ... }
     #   end
 
     def scan_each
