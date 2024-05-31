@@ -5,7 +5,10 @@ class ProducerTestWorker
 end
 
 RSpec.describe XQue::Producer do
-  let(:producer) { described_class.new(redis_url: ENV.fetch("REDIS_URL"), queue_name: "items") }
+  let(:consumer) { XQue::Consumer.new(redis_url: redis_url, queue_name: "items", logger: logger) }
+  let(:producer) { XQue::Producer.new(redis_url: redis_url, queue_name: "items") }
+  let(:redis_url) { ENV.fetch("REDIS_URL") }
+  let(:logger) { Logger.new("/dev/null") }
 
   describe "#enqueue" do
     context "with default queue name" do
@@ -75,6 +78,20 @@ RSpec.describe XQue::Producer do
     end
   end
 
+  describe "#size" do
+    it "returns the number of queued jobs plus the number of pending jobs" do
+      producer.enqueue(ProducerTestWorker.new(key: "value"))
+      producer.enqueue(ProducerTestWorker.new(key: "value"))
+      producer.enqueue(ProducerTestWorker.new(key: "value"))
+
+      consumer.send(:dequeue)
+
+      expect(producer.queue_size).to eq(2)
+      expect(producer.pending_size).to eq(1)
+      expect(producer.size).to eq(3)
+    end
+  end
+
   describe "#queue_size" do
     it "returns 0 when there no queued jobs" do
       expect(producer.queue_size).to eq(0)
@@ -106,6 +123,47 @@ RSpec.describe XQue::Producer do
       RedisConnection.zadd("xque:pending:items", RedisConnection.time[0] + 100, jid3)
 
       expect(producer.pending_size).to eq(3)
+    end
+  end
+
+  describe "#scan_each" do
+    it "yields all pending and queued jobs" do
+      Timecop.freeze Time.parse("2021-01-01 12:00:00 UTC") do
+        jid1 = producer.enqueue(ProducerTestWorker.new(key: "value"))
+        jid2 = producer.enqueue(ProducerTestWorker.new(key: "value"))
+        jid3 = producer.enqueue(ProducerTestWorker.new(key: "value"))
+
+        consumer.send(:dequeue)
+
+        expect(producer.queue_size).to eq(2)
+        expect(producer.pending_size).to eq(1)
+
+        expect(producer.scan_each.to_a).to eq(
+          [
+            {
+              "args" => { "key" => "value" },
+              "class" => "ProducerTestWorker",
+              "created_at" => "2021-01-01T12:00:00Z",
+              "expiry" => 3600,
+              "jid" => jid1
+            },
+            {
+              "args" => { "key" => "value" },
+              "class" => "ProducerTestWorker",
+              "created_at" => "2021-01-01T12:00:00Z",
+              "expiry" => 3600,
+              "jid" => jid2
+            },
+            {
+              "args" => { "key" => "value" },
+              "class" => "ProducerTestWorker",
+              "created_at" => "2021-01-01T12:00:00Z",
+              "expiry" => 3600,
+              "jid" => jid3
+            }
+          ]
+        )
+      end
     end
   end
 

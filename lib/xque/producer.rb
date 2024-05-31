@@ -61,6 +61,18 @@ module XQue
       jid
     end
 
+    # Returns the number of queued and pending jobs
+    #
+    # @returns [Integer] The number of jobs
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #   MyQueue.size #=> e.g. 15
+
+    def size
+      queue_size + pending_size
+    end
+
     # Returns the number of queued jobs for the queue.
     #
     # @returns [Integer] The number of queued jobs.
@@ -100,6 +112,34 @@ module XQue
       return unless job
 
       JSON.parse(job)
+    end
+
+    # Iterates all jobs of the queue.
+    #
+    # @returns [Enum] An enum
+    #
+    # @example
+    #   MyQueue = XQue::Producer.new(redis_url: "...", queue_name: "default")
+    #
+    #   MyQueue.scan_each do |job|
+    #     # => { "jid" => "...", "class" => "MyWorker", ... }
+    #   end
+
+    def scan_each
+      return enum_for(__method__) unless block_given?
+
+      ["xque:pending:#{@queue_name}", "xque:queue:#{@queue_name}"].each do |key|
+        @redis.zscan_each(key).each_slice(100) do |slice|
+          jobs = @redis.hmget("xque:jobs", slice.map(&:first))
+
+          slice.each_with_index do |_, index|
+            job = jobs[index]
+            next unless job
+
+            yield JSON.parse(job)
+          end
+        end
+      end
     end
 
     # Returns the pending time, i.e. the time up until the job will be
